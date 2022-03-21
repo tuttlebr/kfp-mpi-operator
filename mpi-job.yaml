@@ -1,0 +1,141 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mpi-service-account
+  namespace: kubeflow-deepops-example-com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mpi-rolebinding
+  namespace: kubeflow-deepops-example-com
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mpi-role
+subjects:
+  - kind: ServiceAccount
+    name: mpi-service-account
+    namespace: kubeflow-deepops-example-com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mpi-role
+  namespace: kubeflow-deepops-example-com
+rules:
+  - apiGroups:
+      - kubeflow.org
+    resources:
+      - pods
+      - mpijobs
+      - serviceaccounts
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: kubeflow.org/v1alpha2
+kind: MPIJob
+metadata:
+  name: mpijob_name
+  namespace: kubeflow-deepops-example-com
+spec:
+  activeDeadlineSeconds: 0
+  backoffLimit: 2
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          containers:
+            - args:
+                - mpirun
+                - -np
+                - "2"
+                - --timestamp-output
+                - --output-filename
+                - /mnt/claraDevDay/MMARs/Performance/logs
+                - -bind-to
+                - none
+                - -map-by
+                - slot
+                - -x
+                - NCCL_DEBUG=INFO
+                - -x
+                - LD_LIBRARY_PATH
+                - -x
+                - PATH
+                - -x
+                - PYTHONPATH
+                - -x
+                - MMAR_ROOT
+                - -mca
+                - pml
+                - ob1
+                - -mca
+                - btl
+                - ^openib
+                - --allow-run-as-root
+                - python
+                - -m
+                - nvmidl.apps.train
+                - -m
+                - /mnt/claraDevDay/MMARs/Performance
+                - -c
+                - config/trn_BT_cache.json
+                - -e
+                - config/environment.json
+                - --set
+                - DATA_ROOT=/mnt/claraDevDay/spleenData/Task09_Spleen
+                - DATASET_JSON=/mnt/claraDevDay/MMARs/Performance/config/dataset_original.json
+                - MMAR_CKPT_DIR=models/trn_BT_cache
+                - multi_gpu=true
+              env:
+                - name: MMAR_ROOT
+                  value: /mnt/claraDevDay/MMARs/Performance
+                - name: PYTHONPATH
+                  value: :/opt/nvidia/medical
+              image: nvcr.io/nvidia/clara-train-sdk:v3.1.01
+              name: clara-multinode-example
+              volumeMounts:
+                - mountPath: /mnt
+                  name: clara-dev-day
+          restartPolicy: Never
+          volumes:
+            - name: clara-dev-day
+              persistentVolumeClaim:
+                claimName: clara-01
+    Worker:
+      replicas: 2
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          containers:
+            - image: nvcr.io/nvidia/clara-train-sdk:v3.1.01
+              name: clara-multinode-example
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
+              volumeMounts:
+                - mountPath: /mnt
+                  name: clara-dev-day
+          restartPolicy: Never
+          volumes:
+            - name: clara-dev-day
+              persistentVolumeClaim:
+                claimName: clara-01
+  runPolicy:
+    cleanPodPolicy: Completed
+  serviceAccountName: mpi-service-account
+  slotsPerWorker: 1

@@ -1,0 +1,13 @@
+services:
+  kfp-base:
+    build:
+      context: .
+    entrypoint: ["python3", "-Wignore", "build-mpi-job.py"]
+    environment:
+      - KFP_NAME=multi-node-clara-example
+      - KFP_DSCR="Example MPIJob wrapped in a KFP job"
+    image: kfp-base
+    volumes:
+      - source: .
+        target: /home/jovyan
+        type: bind
